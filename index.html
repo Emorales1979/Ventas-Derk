@@ -843,6 +843,35 @@ if ('showOpenFilePicker' in window) {
 let snap = null;
 try { const t = document.getElementById('snap').textContent.trim(); if (t.startsWith('{')) snap = JSON.parse(t); } catch (e) { snap = null; }
 if (snap && Object.keys(snap).length) setYears(snap, 'snap');
+// ---------- datos en vivo (copia pública en GitHub Pages) ----------
+// Lee "datos.xlsx" publicado junto a la página (lo sube el computador de Derk cada vez que se guarda el Excel)
+// y revisa cada minuto si hay una versión nueva.
+if (/\.github\.io$/i.test(location.hostname)) {
+  let marca = null;
+  const vivo = async () => {
+    try {
+      if (!window.XLSX) return;
+      const u = 'datos.xlsx?t=' + Date.now();
+      const h = await fetch(u, { method: 'HEAD', cache: 'no-store' });
+      if (!h.ok) return;
+      const m = h.headers.get('last-modified') || h.headers.get('etag') || '';
+      if (m && m === marca) return;
+      const r = await fetch(u, { cache: 'no-store' }); if (!r.ok) return;
+      const wb = XLSX.read(await r.arrayBuffer(), { type: 'array', cellDates: true, dense: true });
+      const lm = r.headers.get('last-modified') || m;
+      const act = lm && !isNaN(Date.parse(lm)) ? new Date(lm).toISOString() : new Date().toISOString();
+      const docs = {};
+      for (const y of YEARS) {
+        const hoja = wb.SheetNames.find(n => n.trim().toUpperCase() === 'INGRESOS ' + y); if (!hoja) continue;
+        const filas = C.parseSheet(XLSX, wb.Sheets[hoja]);
+        if (filas.length) docs[y] = { archivo: 'Ventas Derk Ingenieria 2026.xlsx', hoja: hoja.trim(), actualizado: act, filas };
+      }
+      if (Object.keys(docs).length) { marca = m; setYears({ ...st.years, ...docs }, 'vivo'); }
+    } catch (e) { /* sin conexión o archivo a medio publicar: se mantiene lo que hay */ }
+  };
+  vivo(); setInterval(vivo, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) vivo(); });
+}
 let loadT = setTimeout(() => { if (!st.data) { $('#srcTxt').textContent = 'Aún no llegan los datos guardados. Puedes cargar el Excel para verlos.'; } }, 10000);
 (async () => {
   const db = window.claude?.use ? await window.claude.use('db') : null;
